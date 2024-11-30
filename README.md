@@ -1,3 +1,3 @@
-# agriviewer
+# Agriviewer 
 
-## Agricultural chatbot capable of monitoring fields
+## Chatbot designed to understand field health (humidity etc?) using semantic segmentation. 
