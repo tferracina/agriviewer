@@ -34,21 +34,77 @@ class LLMResponse:
 class APILLMEngine:
     """Logic for the LLM engine using Llama"""
     def __init__(self):
-        # Update model name for Llama
         self.api_url = "https://api-inference.huggingface.co/models/meta-llama/Llama-2-8b-chat-hf"
-        self.headers = {"Authorization": f"Bearer {Config.HF_API_KEY}"}
+        self.headers = {
+            "Authorization": f"Bearer {Config.HF_API_KEY}",
+            "Content-Type": "application/json"
+        }
 
-    async def _make_api_request(self, payload: Dict) -> str:
+    async def _make_api_request(self, messages: List[Dict[str, str]]) -> str:
         """Make API request to Hugging Face"""
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                self.api_url,
-                json=payload,
-                headers=self.headers,
-                timeout=30.0
-            )
-            response.raise_for_status()
-            return response.json()[0]["generated_text"]
+        # Format the conversation for Llama
+        formatted_messages = []
+        for msg in messages:
+            if msg["role"] == "system":
+                formatted_messages.append({
+                    "role": "system",
+                    "content": msg["content"]
+                })
+            elif msg["role"] == "user":
+                formatted_messages.append({
+                    "role": "user",
+                    "content": msg["content"]
+                })
+            elif msg["role"] == "assistant":
+                formatted_messages.append({
+                    "role": "assistant",
+                    "content": msg["content"]
+                })
+
+        payload = {
+            "inputs": formatted_messages,
+            "parameters": {
+                "max_new_tokens": 512,
+                "temperature": Config.TEMPERATURE,
+                "top_p": 0.9,
+                "do_sample": True,
+                "return_full_text": False
+            },
+            "options": {
+                "wait_for_model": True
+            }
+        }
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    self.api_url,
+                    json=payload,
+                    headers=self.headers,
+                    timeout=30.0
+                )
+                response.raise_for_status()
+                
+                # Extract the generated text
+                result = response.json()
+                if isinstance(result, list) and len(result) > 0:
+                    return result[0]["generated_text"]
+                else:
+                    logger.error(f"Unexpected response format: {result}")
+                    return "I apologize, but I encountered an issue processing your request. Could you please try again?"
+                
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error occurred: {e.response.status_code} - {e.response.text}")
+            if e.response.status_code == 401:
+                return "Authentication error. Please check your API key."
+            elif e.response.status_code == 403:
+                return "Access denied. Please ensure you have access to the Llama model."
+            else:
+                return "I encountered an error processing your request. Please try again later."
+        except Exception as e:
+            logger.error(f"Error during API request: {str(e)}")
+            return "I apologize, but I encountered an unexpected error. Please try again."
+
 
     async def analyze_results(self, results: 'pd.DataFrame', context: Dict) -> 'LLMResponse':
         """Analyze results using Llama"""
