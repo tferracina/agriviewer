@@ -4,10 +4,12 @@ def analysis_types():
     """Return the analysis types supported by the LLM engine"""
     return {
             "NDVI": "Analyze NDVI (Normalized Difference Vegetation Index) data to assess crop health and biomass. Focus on temporal changes and spatial patterns.",
-            "soil_moisture": "Evaluate soil moisture levels and their distribution. Identify areas of concern and temporal trends.",
-            "crop_health": "Assess overall crop health considering multiple factors. Highlight areas needing attention.",
-            "growth_stage": "Determine crop growth stages and their uniformity across the field.",
-            "pest_risk": "Evaluate conditions that might indicate pest risk or presence of disease."
+            'NDMI': "Analyze NDMI (Normalized Difference Moisture Index) data to evaluate soil moisture levels and water stress. Identify areas of concern and trends.",
+            "SAVI": "Analyze SAVI (Soil-Adjusted Vegetation Index) data to assess vegetation health while accounting for soil brightness. Highlight areas of concern and trends.",
+            "EVI": "Analyze EVI (Enhanced Vegetation Index) data to evaluate vegetation health and stress. Identify patterns and anomalies.",
+            "GNDVI": "Analyze GNDVI (Green Normalized Difference Vegetation Index) data to assess vegetation health and stress. Focus on spatial patterns and temporal trends.",
+            "Field_Area": "Analyze field area and boundary data to assess field size, shape, and uniformity. Identify potential issues or areas for improvement.",
+            "Canopy Cover": "Analyze canopy cover data to assess the extent and density of crop canopy. Identify variations and trends.",
         }
 
 def llm_engine_instructions(data, location, date_range, crop_type):
