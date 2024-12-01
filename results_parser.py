@@ -38,8 +38,8 @@ class ResultsParser:
         """Create a default DataFrame with sample data"""
         return pd.DataFrame({
             'date': pd.date_range(start='2024-01-01', periods=10),
-            'ndvi': np.random.uniform(0.3, 0.8, 10),
-            'soil_moisture': np.random.uniform(20, 40, 10),
+            'NDVI': np.random.uniform(0.3, 0.8, 10),
+            'Field_Area': np.random.uniform(20, 40, 10),
             'health_score': np.random.uniform(60, 90, 10)
         })
     

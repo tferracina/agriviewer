@@ -3,12 +3,15 @@ from typing import Dict, List
 import json
 import streamlit as st
 from llama_index.core.workflow import InputRequiredEvent
+from datetime import datetime
+import pandas as pd
 
 from llm_engine import APILLMEngine, WorkflowMonitor
 from cv_analyzer import HardcodedCVAnalyzer
 from results_parser import ResultsParser
 from prompt_handler import PromptHandler
 from config import Config
+from visualizer import AgriVisualizer
 
 class StreamlitUI:
     def __init__(self):
@@ -17,6 +20,8 @@ class StreamlitUI:
         self.cv_analyzer = HardcodedCVAnalyzer()
         self.results_parser = ResultsParser()
         self.prompt_handler = PromptHandler(llm=self.llm_engine)
+        
+        self.visualizer = AgriVisualizer()
         
         # Initialize session state
         if 'messages' not in st.session_state:
@@ -38,28 +43,10 @@ class StreamlitUI:
         }
         st.session_state.workflow_steps.append(workflow_step)
 
-    def display_workflow_sidebar(self):
-        """Display workflow steps in the right sidebar"""
-        with st.sidebar:
-            st.header("Workflow Status")
-            for step in st.session_state.workflow_steps:
-                status_color = {
-                    "pending": "🔵",
-                    "complete": "✅",
-                    "error": "❌"
-                }.get(step["status"], "⚪")
-                
-                # Create expander for each step
-                with st.expander(f"{status_color} {step['step']}", expanded=True):
-                    if (details := step.get("details")):
-                        df = details.pop('df') if ('df' in details) else None
-                        image = details.pop('image') if ('image' in details) else None
-                        # Format JSON details nicely
-                        st.code(json.dumps(details, indent=2), language="json")
-                        if df is not None:
-                            st.dataframe(df)
-                        if image is not None:
-                            st.image(image)
+    def display_workflow(self):
+        """Display workflow steps in the workflow column"""
+        for idx, step in enumerate(st.session_state.workflow_steps):
+            self.visualizer.display_workflow_step(step, idx)
                         
     def display_metrics_selector(self) -> List[str]:
         """Display metric selection widget"""
@@ -186,20 +173,51 @@ def main():
         
         # Display metrics selector
         selected_metrics = ui.display_metrics_selector()
+        if not selected_metrics:
+            st.warning("Please select at least one metric to analyze")
+            return
         
-        # Display chat messages
+        # Display chat messages with enhanced visualization
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
+                
+                # For assistant messages, display any visualizations from workflow steps
+                if message["role"] == "assistant":
+                    # Find the relevant workflow steps with visualizations
+                    relevant_steps = [
+                        step for step in st.session_state.workflow_steps 
+                        if step.get("details") and 
+                        (step["details"].get("df") is not None or step["details"].get("image") is not None)
+                    ]
+                    
+                    # Display visualizations from workflow steps
+                    for step in relevant_steps:
+                        details = step["details"]
+                        
+                        # Display DataFrame visualizations
+                        if (df := details.get("df")) is not None:
+                            if isinstance(df, pd.DataFrame) and not df.empty:
+                                with st.expander("📊 Metrics Analysis", expanded=True):
+                                    print(df)
+                                    ui.visualizer.display_metrics_visualization(df, selected_metrics)
+                        
+                        # Display images
+                        if image := details.get("image"):
+                            st.image(image, use_column_width=True)
         
         # Chat input
         if prompt := st.chat_input("What would you like to analyze?"):
-            asyncio.run(ui.process_message(prompt, selected_metrics))
-            st.rerun()
+            with st.spinner("Processing your request..."):
+                try:
+                    asyncio.run(ui.process_message(prompt, selected_metrics))
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"An error occurred: {str(e)}")
     
+    # Keep workflow steps in sidebar for progress tracking
     with workflow_col:
-        st.title("Workflow Steps")
-        # Remove the sidebar display method and only use the column
+        st.title("Analysis Progress")
         for step in st.session_state.workflow_steps:
             status_color = {
                 "pending": "🔵",
@@ -209,16 +227,11 @@ def main():
             
             with st.expander(f"{status_color} {step['step']}", expanded=True):
                 if (details := step.get("details")):
-                    df = details.pop('df') if ('df' in details) else None
-                    image = details.pop('image') if ('image' in details) else None
-                    if details:
-                        # Format JSON details nicely
-                        st.code(json.dumps(details, indent=2), language="json")
-                    if df is not None:
-                        st.dataframe(df)
-                    if image is not None:
-                        st.image(image)
-
+                    # Only show non-visual information in sidebar
+                    cleaned_details = {k: v for k, v in details.items() 
+                                    if k not in ['df', 'image']}
+                    if cleaned_details:
+                        st.code(json.dumps(cleaned_details, indent=2), language="json")
 
 if __name__ == "__main__":
     main()
