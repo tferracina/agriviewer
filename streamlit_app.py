@@ -8,6 +8,7 @@ from llm_engine import APILLMEngine, WorkflowMonitor
 from cv_analyzer import CVAnalyzer
 from results_parser import ResultsParser
 from prompt_handler import PromptHandler
+from config import Config
 
 class StreamlitUI:
     def __init__(self):
@@ -27,9 +28,14 @@ class StreamlitUI:
         if 'workflow_steps' not in st.session_state:
             st.session_state.workflow_steps = []
             
-    def update_workflow_status(self, step: str, status: str = "pending"):
+    def update_workflow_status(self, step: str, status: str = "pending", details: Dict = None):
         """Update workflow steps in session state"""
-        workflow_step = {"step": step, "status": status, "timestamp": st.session_state.get('current_timestamp', 0)}
+        workflow_step = {
+            "step": step, 
+            "status": status, 
+            "timestamp": st.session_state.get('current_timestamp', 0),
+            "details": details
+        }
         st.session_state.workflow_steps.append(workflow_step)
 
     def display_workflow_sidebar(self):
@@ -42,18 +48,20 @@ class StreamlitUI:
                     "complete": "✅",
                     "error": "❌"
                 }.get(step["status"], "⚪")
-                st.write(f"{status_color} {step['step']}")
+                
+                # Create expander for each step
+                with st.expander(f"{status_color} {step['step']}", expanded=True):
+                    if step.get("details"):
+                        # Format JSON details nicely
+                        st.code(json.dumps(step["details"], indent=2), language="json")
 
     def display_metrics_selector(self) -> List[str]:
         """Display metric selection widget"""
-        available_metrics = [
-            "NDVI", "soil_moisture", "crop_health", 
-            "growth_stage", "pest_risk"
-        ]
+        available_metrics = Config.METRICS
         selected = st.multiselect(
             "Select metrics to analyze (optional)",
             options=available_metrics,
-            default=["NDVI", "soil_moisture", "crop_health"]
+            default=["NDVI", "Field_Area"]
         )
         return selected
 
@@ -71,7 +79,20 @@ class StreamlitUI:
             self.update_workflow_status("1. Parsing user prompt", "pending")
             metrics_context = f"{user_input} analyzing metrics: {', '.join(selected_metrics)}"
             request = await self.prompt_handler.parse_user_request(metrics_context)
-            self.update_workflow_status("1. Parsing user prompt", "complete")
+            
+            # Add parsed request details to workflow
+            if not isinstance(request, InputRequiredEvent):
+                parsed_details = {
+                    "location": request.location,
+                    "date_range": request.date_range,
+                    "metrics": request.metrics,
+                    "crop_type": request.crop_type,
+                    "additional_context": request.additional_context
+                }
+                self.update_workflow_status("1. Parsing user prompt", "complete", parsed_details)
+            else:
+                self.update_workflow_status("1. Parsing user prompt", "complete", 
+                                         {"clarification_needed": request.prefix})
 
             if isinstance(request, InputRequiredEvent):
                 self.update_workflow_status("2. Request needs clarification", "complete")
@@ -85,12 +106,17 @@ class StreamlitUI:
                         date_range=request.date_range,
                         metrics=selected_metrics
                     )
-                self.update_workflow_status("2. Computer Vision Analysis", "complete")
+                self.update_workflow_status("2. Computer Vision Analysis", "complete", 
+                                         {"analyzed_metrics": selected_metrics})
                 
                 # Step 3: Parse Results
                 self.update_workflow_status("3. Processing CV Results", "pending")
                 parsed_results = self.results_parser.parse_cv_results(results)
-                self.update_workflow_status("3. Processing CV Results", "complete")
+                result_summary = {
+                    "shape": parsed_results.shape if hasattr(parsed_results, 'shape') else None,
+                    "columns": list(parsed_results.columns) if hasattr(parsed_results, 'columns') else None
+                }
+                self.update_workflow_status("3. Processing CV Results", "complete", result_summary)
                 
                 # Step 4: Generate Insights
                 self.update_workflow_status("4. Generating Analysis", "pending")
@@ -105,7 +131,8 @@ class StreamlitUI:
                     results=parsed_results,
                     context=context
                 )
-                self.update_workflow_status("4. Generating Analysis", "complete")
+                self.update_workflow_status("4. Generating Analysis", "complete", 
+                                         {"analysis_context": context})
                 
                 response = insights.content
                 
@@ -118,13 +145,14 @@ class StreamlitUI:
                 st.session_state.conversation_memory.append(memory_entry)
                 
                 # Step 5: Ready for follow-up
-                self.update_workflow_status("5. Ready for follow-up questions", "complete")
+                self.update_workflow_status("5. Ready for follow-up questions", "complete", 
+                                         {"suggested_questions": insights.suggested_questions})
             
             # Add assistant response to chat
             st.session_state.messages.append({"role": "assistant", "content": response})
             
         except Exception as e:
-            self.update_workflow_status("Error occurred", "error")
+            self.update_workflow_status("Error occurred", "error", {"error": str(e)})
             error_message = f"An error occurred: {str(e)}"
             st.session_state.messages.append({"role": "assistant", "content": error_message})
 

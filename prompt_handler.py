@@ -5,6 +5,7 @@ import logging
 from llama_index.core.workflow import InputRequiredEvent # type: ignore
 
 from ph_instructions import prompt_handler_instructions
+from config import Config
 
 @dataclass
 class ParsedRequest:
@@ -85,10 +86,7 @@ class PromptHandler:
             return "I need a specific location to analyze. Where should I look?"
         
         # Validate metrics if provided
-        valid_metrics = {
-            "NDVI", "soil_moisture", "crop_health", 
-            "growth_stage", "pest_risk"
-        }
+        valid_metrics = Config.METRICS
         
         if "metrics" in parsed:
             invalid_metrics = [m for m in parsed["metrics"] if m not in valid_metrics]

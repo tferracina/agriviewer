@@ -14,3 +14,14 @@ class Config:
     # Additional configuration settings can go here
     MAX_LENGTH = 2048
     TEMPERATURE = 0.7
+
+    # Metrics
+    METRICS = [
+        "NDVI",
+        "NDMI",
+        "SAVI",
+        "EVI",
+        "GNDVI",
+        "Field_Area",
+        "Canopy Cover"
+]
