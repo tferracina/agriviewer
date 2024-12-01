@@ -103,10 +103,7 @@ class APILLMEngine:
         
         # Format the prompt for Llama
         system_prompt = self._get_system_prompt()
-        analysis_prompt = f"""
-        Raw CV Analysis Results:
-        {results.to_string()}
-        
+        analysis_prompt = """
         Based on the above results, provide a very brief analysis focusing on:
         1. Most important observation
         2. Key recommendation (if needed)

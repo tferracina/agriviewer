@@ -126,7 +126,7 @@ class StreamlitUI:
                 self.update_workflow_status("3. Processing CV Results", "complete", result_summary)
                 
                 #nn Step 4: Generate Insights
-                nself.update_workflow_status("4. Generating Analysis", "pending")
+                self.update_workflow_status("4. Generating Analysis", "pending")
                 context = {
                     "location": request.location,
                     "date_range": request.date_range,
@@ -208,8 +208,16 @@ def main():
             }.get(step["status"], "⚪")
             
             with st.expander(f"{status_color} {step['step']}", expanded=True):
-                if step.get("details"):
-                    st.code(json.dumps(step["details"], indent=2), language="json")
+                if (details := step.get("details")):
+                    df = details.pop('df') if ('df' in details) else None
+                    image = details.pop('image') if ('image' in details) else None
+                    # Format JSON details nicely
+                    st.code(json.dumps(details, indent=2), language="json")
+                    if df is not None:
+                        st.dataframe(df)
+                    if image is not None:
+                        st.image(image)
+
 
 if __name__ == "__main__":
     main()
