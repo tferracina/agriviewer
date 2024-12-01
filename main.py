@@ -1,130 +1,168 @@
 from llama_index.core.workflow import (
     Event,
     StartEvent,
-    StopEvent,sour
+    StopEvent,
     Workflow,
     step,
-    Context
+    Context,
+    InputRequiredEvent,
+    HumanResponseEvent
 )
-from typing import List, Optional
+from typing import List, Optional, Dict
+from dataclasses import dataclass
+import pandas as pd
 
-# Events for workflow
+from prompt_handler import PromptHandler
 
-class CVAnalysisEvent(Event):
-    """Event containing the CV model results"""
-    pass
+# Event definitions
+class CVRequest(Event):
+    """Request for CV analysis with specific parameters"""
+    location: str
+    date_range: Optional[str]
+    metrics: List[str]
+    crop_type: Optional[str]
 
-class LLMAnalysisEvent(Event):
-    """Event containing the LLM's interpretation, analysis, and results"""
-    pass
+class CVResponse(Event):
+    """Structured response from CV analysis"""
+    results: pd.DataFrame
+    metadata: Dict
+    analysis_type: str
 
-class HumanMessageEvent(Event):
-    """Event for handling user message/queries"""
-    pass
+class LLMQuery(Event):
+    """LLM's request for additional CV data"""
+    request_type: str
+    parameters: Dict
+    context: str
 
-class CropAnalysisWorkflow(Workflow):
-    def __init__(self, cv_model, llm, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.cv_model = cv_model
-        self.llm = llm
+class ConversationState(Event):
+    """Maintains the conversation context"""
+    current_topic: str
+    cv_history: List[str]
+    last_analysis: Optional[Dict]
+    follow_up_questions: List[str]
+
+class InteractiveCropAnalysis(Workflow):
+    def __init__(self, cv_analyzer, llm_engine, results_parser, prompt_handler):
+        super().__init__()
+        self.cv_analyzer = cv_analyzer
+        self.llm = llm_engine
+        self.parser = results_parser
+        self.prompt_handler = prompt_handler
+        self.conversation_memory = []
 
     @step
-    async def process_user_input(self, ctx: Context, ev: StartEvent | HumanMessageEvent) -> CVAnalysisEvent | StopEvent:
-        """Process the initial user input and image"""
+    async def handle_user_input(self, ctx: Context, ev: StartEvent | HumanResponseEvent) -> CVRequest | StopEvent:
+        """Process user input and determine next action"""
         if isinstance(ev, StartEvent):
-            # Handle initial greeting
-            return StopEvent(result="Welcome! Ask me about a location/crop/date and any specific concerns about your crops.")
+            return InputRequiredEvent(
+                prefix="Welcome to AgriViewer! What would you like to analyze? (Specify location/crop/date)"
+            )
         
-        # Handle user message 
-        # PARSE THE MESSAGE
-        # SEND TO CV STAGE
+        # Parse user request into structured format
+        request = self.prompt_handler.parse_user_request(ev.response)
+        await ctx.set("current_request", request)
         
-        # Store the user's message for context
-        await ctx.set("current_query", ev.message)
-        
-        # Analyze image using CV model
-        analysis_results = await self.execute_user_request(ev.request)
-        return CVAnalysisEvent(**analysis_results)
+        # Create CV request
+        return CVRequest(
+            location=request.location,
+            date_range=request.date_range,
+            metrics=request.metrics,
+            crop_type=request.crop_type
+        )
 
     @step
-    async def generate_llm_analysis(self, ctx: Context, ev: CVAnalysisEvent) -> LLMAnalysisEvent:
-        """Generate comprehensive analysis using LLM"""
-        # Get the user's query for context
-        user_query = await ctx.get("current_query")
-        
-        # Construct prompt for LLM
-        prompt = self.construct_analysis_prompt(
-            user_query=user_query,
-            vegetation_indices=ev.vegetation_indices,
-            detected_issues=ev.detected_issues,
-            confidence_scores=ev.confidence_scores
+    async def execute_cv_analysis(self, ctx: Context, ev: CVRequest) -> CVResponse:
+        """Execute CV analysis based on request"""
+        # Get analysis results
+        results_df = await self.cv_analyzer.analyze(
+            location=ev.location,
+            date_range=ev.date_range,
+            metrics=ev.metrics
         )
         
-        # Get LLM response
-        response = await self.llm.acomplete(prompt)
+        # Parse and structure results
+        parsed_results = self.parser.parse_cv_results(results_df)
         
-        # Parse LLM response into structured format
-        analysis_result = self.parse_llm_response(response)
-        return LLMAnalysisEvent(**analysis_result)
+        return CVResponse(
+            results=parsed_results.df,
+            metadata=parsed_results.metadata,
+            analysis_type=ev.metrics[0]  # Primary analysis type
+        )
 
     @step
-    async def prepare_response(self, ctx: Context, ev: LLMAnalysisEvent) -> StopEvent:
-        """Prepare the final response to the user"""
-        response = {
-            "analysis": ev.analysis,
-            "recommendations": ev.recommendations,
-            "follow_up_questions": ev.follow_up_questions
-        }
+    async def generate_llm_insights(self, ctx: Context, ev: CVResponse | LLMQuery) -> ConversationState | CVRequest:
+        """Generate insights and potentially request more data"""
+        current_request = await ctx.get("current_request")
         
-        return StopEvent(result=response)
+        if isinstance(ev, CVResponse):
+            # Generate initial insights
+            insights = await self.llm.analyze_results(
+                results=ev.results,
+                context=current_request
+            )
+            
+            # Store in conversation memory
+            self.conversation_memory.append({
+                "type": "analysis",
+                "results": ev.results,
+                "insights": insights
+            })
+            
+            # Check if LLM needs more information
+            if insights.needs_more_data:
+                return CVRequest(**insights.additional_request)
+            
+            return ConversationState(
+                current_topic=current_request.topic,
+                cv_history=[mem["type"] for mem in self.conversation_memory],
+                last_analysis=insights.dict(),
+                follow_up_questions=insights.suggested_questions
+            )
+        
+        # Handle LLM's request for more data
+        return CVRequest(**ev.parameters)
 
-    # Helper methods
-    async def execute_user_request(self, request: str) -> dict:
-        """Send to prompt to computer vision function"""
-        # Implement CV model analysis here
-        # Should return RESULT_dict with (vegetation_indices, detected_issues, etc.)
-        pass
+    @step
+    async def prepare_response(self, ctx: Context, ev: ConversationState) -> InputRequiredEvent:
+        """Prepare response and ask for next query"""
+        response = self.prompt_handler.format_response(
+            analysis=ev.last_analysis,
+            history=ev.cv_history,
+            suggestions=ev.follow_up_questions
+        )
+        
+        return InputRequiredEvent(
+            prefix=f"{response}\n\nWhat else would you like to know?"
+        )
 
-    def construct_analysis_prompt(self, **kwargs) -> str:
-        """Construct prompt for LLM analysis"""
-        # Implement prompt construction
-        pass
-
-    def parse_llm_response(self, response: str) -> dict:
-        """Parse LLM response into structured format"""
-        # Implement response parsing
-        pass
-
-# Example usage:
-async def main():
-    # Initialize models (pseudo-code)
-    cv_model = initialize_cv_model()
-    llm = initialize_llm()
+# Usage example:
+async def run_interactive_session():
+    # Initialize components
+    cv_analyzer = CVAnalyzer()
+    llm_engine = LLMEngine()
+    results_parser = ResultsParser()
+    prompt_handler = PromptHandler(llm=llm_engine)
     
-    workflow = CropAnalysisWorkflow(
-        cv_model=cv_model,
-        llm=llm,
-        timeout=120,
-        verbose=True
-    )
-
-    # Initial greeting
+    # Start conversation loop
     handler = workflow.run()
-    greeting = await handler
-
-    # Process image and query
-    handler = workflow.run(
-        ctx=handler.ctx,  # Maintain context
-        message="How healthy are my corn crops?",
-        image_path="satellite_image.jpg"
-    )
     
-    # Stream events for debugging/logging
-    async for event in handler.stream_events():
-        if isinstance(event, ImageAnalysisEvent):
-            print("CV Analysis complete")
-        elif isinstance(event, LLMAnalysisEvent):
-            print("LLM Analysis complete")
-    
-    result = await handler
-    print(result)
+    while True:
+        async for event in handler.stream_events():
+            if isinstance(event, InputRequiredEvent):
+                # Get user input
+                user_input = input(event.prefix + "\n")
+                if user_input.lower() in ['exit', 'quit']:
+                    return
+                
+                # Send response back to workflow
+                handler.ctx.send_event(HumanResponseEvent(response=user_input))
+            
+            elif isinstance(event, CVResponse):
+                print("Processing CV analysis...")
+            
+            elif isinstance(event, ConversationState):
+                print("Generating insights...")
+        
+        # Get final result and continue conversation
+        result = await handler
+        handler = workflow.run(ctx=handler.ctx)  # Maintain context for next iteration

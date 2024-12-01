@@ -1,10 +1,9 @@
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Union
 from dataclasses import dataclass
-from datetime import datetime
 import json
-from llama_index.core.workflow import InputRequiredEvent
+from llama_index.core.workflow import InputRequiredEvent # type: ignore
 
-from prompt_handler import propt_handler_instructions
+from ph_instructions import prompt_handler_instructions
 
 @dataclass
 class ParsedRequest:
@@ -34,7 +33,6 @@ class PromptHandler:
         ])
 
         try:
-            try:
             # Parse JSON response
             parsed = json.loads(response.content)
             
