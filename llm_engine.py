@@ -118,8 +118,6 @@ class APILLMEngine:
         cleaned_response = self._clean_response(response)
         
         final_response = f"""
-Raw CV Results:
-{results.to_string()}
 
 Brief Analysis:
 {cleaned_response}

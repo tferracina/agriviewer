@@ -54,7 +54,6 @@ def base_system_prompt():
 2. Focus only on the most critical insights
 3. Use simple, direct language
 4. Highlight only actionable findings
-5. Include raw data followed by brief analysis
 
 When analyzing data:
 - State the single most important observation

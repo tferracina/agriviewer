@@ -121,17 +121,17 @@ class StreamlitUI:
                 result_summary = {
                     "shape": parsed_results.shape if hasattr(parsed_results, 'shape') else None,
                     "columns": list(parsed_results.columns) if hasattr(parsed_results, 'columns') else None,
-                    "df": parsed_results
+                    "df": parsed_results, "image": "assets/histogram.jpeg"
                 }
                 self.update_workflow_status("3. Processing CV Results", "complete", result_summary)
                 
                 #nn Step 4: Generate Insights
-                self.update_workflow_status("4. Generating Analysis", "pending")
+                self.update_workflow_status("4. Generating Analysis", "pending", {"image": "assets/segmentation.jpeg"})
                 context = {
                     "location": request.location,
                     "date_range": request.date_range,
                     "crop_type": request.crop_type,
-                    "metrics": selected_metrics
+                    "metrics": selected_metrics,
                 }
                 
                 insights = await self.llm_engine.analyze_results(
@@ -211,8 +211,9 @@ def main():
                 if (details := step.get("details")):
                     df = details.pop('df') if ('df' in details) else None
                     image = details.pop('image') if ('image' in details) else None
-                    # Format JSON details nicely
-                    st.code(json.dumps(details, indent=2), language="json")
+                    if details:
+                        # Format JSON details nicely
+                        st.code(json.dumps(details, indent=2), language="json")
                     if df is not None:
                         st.dataframe(df)
                     if image is not None:
