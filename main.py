@@ -1,18 +1,19 @@
+from typing import List, Dict, Optional, Union
+import httpx
 from llama_index.core.workflow import (
-    Event,
-    StartEvent,
-    StopEvent,
-    Workflow,
-    step,
-    Context,
-    InputRequiredEvent,
-    HumanResponseEvent
+    Event, StartEvent, StopEvent, Workflow, step,
+    Context, InputRequiredEvent, HumanResponseEvent
 )
-from typing import List, Optional, Dict
+import logging
+from config import Config
 from dataclasses import dataclass
 import pandas as pd
 
 from prompt_handler import PromptHandler
+
+from llm_engine import WorkflowMonitor, APILLMEngine
+from cv_analyzer import CVAnalyzer
+from results_parser import ResultsParser
 
 # Event definitions
 class CVRequest(Event):
@@ -41,28 +42,29 @@ class ConversationState(Event):
     last_analysis: Optional[Dict]
     follow_up_questions: List[str]
 
-class InteractiveCropAnalysis(Workflow):
-    def __init__(self, cv_analyzer, llm_engine, results_parser, prompt_handler):
-        super().__init__()
-        self.cv_analyzer = cv_analyzer
-        self.llm = llm_engine
-        self.parser = results_parser
-        self.prompt_handler = prompt_handler
-        self.conversation_memory = []
-
+class MonitoredWorkflow(Workflow):
+    """Enhanced workflow with monitoring"""
+    
     @step
-    async def handle_user_input(self, ctx: Context, ev: StartEvent | HumanResponseEvent) -> CVRequest | StopEvent:
-        """Process user input and determine next action"""
+    async def handle_user_input(self, ctx: Context, ev: StartEvent | HumanResponseEvent) -> Union[CVRequest, StopEvent, InputRequiredEvent]:
+        """Process user input with monitoring"""
+        WorkflowMonitor.log_stage("User Input Handler", {
+            "event_type": type(ev).__name__
+        })
+        
         if isinstance(ev, StartEvent):
             return InputRequiredEvent(
                 prefix="Welcome to AgriViewer! What would you like to analyze? (Specify location/crop/date)"
             )
         
-        # Parse user request into structured format
-        request = self.prompt_handler.parse_user_request(ev.response)
+        request = await self.prompt_handler.parse_user_request(ev.response)
+        WorkflowMonitor.log_stage("Request Parsed", {"request": str(request)})
+        
         await ctx.set("current_request", request)
         
-        # Create CV request
+        if isinstance(request, InputRequiredEvent):
+            return request
+            
         return CVRequest(
             location=request.location,
             date_range=request.date_range,
@@ -72,43 +74,48 @@ class InteractiveCropAnalysis(Workflow):
 
     @step
     async def execute_cv_analysis(self, ctx: Context, ev: CVRequest) -> CVResponse:
-        """Execute CV analysis based on request"""
-        # Get analysis results
+        """Execute CV analysis with monitoring"""
+        WorkflowMonitor.log_stage("CV Analysis", {
+            "location": ev.location,
+            "metrics": ev.metrics
+        })
+        
         results_df = await self.cv_analyzer.analyze(
             location=ev.location,
             date_range=ev.date_range,
             metrics=ev.metrics
         )
         
-        # Parse and structure results
         parsed_results = self.parser.parse_cv_results(results_df)
+        WorkflowMonitor.log_stage("CV Analysis Complete", {
+            "results_shape": parsed_results.shape if hasattr(parsed_results, 'shape') else 'N/A'
+        })
         
         return CVResponse(
-            results=parsed_results.df,
-            metadata=parsed_results.metadata,
-            analysis_type=ev.metrics[0]  # Primary analysis type
+            results=parsed_results,
+            metadata={},
+            analysis_type=ev.metrics[0]
         )
 
     @step
-    async def generate_llm_insights(self, ctx: Context, ev: CVResponse | LLMQuery) -> ConversationState | CVRequest:
-        """Generate insights and potentially request more data"""
+    async def generate_llm_insights(self, ctx: Context, ev: Union[CVResponse, LLMQuery]) -> Union[ConversationState, CVRequest]:
+        """Generate insights with monitoring"""
+        WorkflowMonitor.log_stage("LLM Insight Generation", {
+            "event_type": type(ev).__name__
+        })
+        
         current_request = await ctx.get("current_request")
         
         if isinstance(ev, CVResponse):
-            # Generate initial insights
             insights = await self.llm.analyze_results(
                 results=ev.results,
                 context=current_request
             )
             
-            # Store in conversation memory
-            self.conversation_memory.append({
-                "type": "analysis",
-                "results": ev.results,
-                "insights": insights
+            WorkflowMonitor.log_stage("Insights Generated", {
+                "needs_more_data": insights.needs_more_data
             })
             
-            # Check if LLM needs more information
             if insights.needs_more_data:
                 return CVRequest(**insights.additional_request)
             
@@ -119,50 +126,45 @@ class InteractiveCropAnalysis(Workflow):
                 follow_up_questions=insights.suggested_questions
             )
         
-        # Handle LLM's request for more data
         return CVRequest(**ev.parameters)
 
-    @step
-    async def prepare_response(self, ctx: Context, ev: ConversationState) -> InputRequiredEvent:
-        """Prepare response and ask for next query"""
-        response = self.prompt_handler.format_response(
-            analysis=ev.last_analysis,
-            history=ev.cv_history,
-            suggestions=ev.follow_up_questions
-        )
-        
-        return InputRequiredEvent(
-            prefix=f"{response}\n\nWhat else would you like to know?"
-        )
-
-# Usage example:
-async def run_interactive_session():
-    # Initialize components
+async def run_monitored_session():
+    WorkflowMonitor.log_stage("Session Start")
+    
+    # Initialize components with API-based LLM
     cv_analyzer = CVAnalyzer()
-    llm_engine = LLMEngine()
+    llm_engine = APILLMEngine()
     results_parser = ResultsParser()
     prompt_handler = PromptHandler(llm=llm_engine)
     
-    # Start conversation loop
+    # Create workflow
+    workflow = MonitoredWorkflow(
+        cv_analyzer=cv_analyzer,
+        llm_engine=llm_engine,
+        results_parser=results_parser,
+        prompt_handler=prompt_handler
+    )
+    
     handler = workflow.run()
     
-    while True:
-        async for event in handler.stream_events():
-            if isinstance(event, InputRequiredEvent):
-                # Get user input
-                user_input = input(event.prefix + "\n")
-                if user_input.lower() in ['exit', 'quit']:
-                    return
+    try:
+        while True:
+            async for event in handler.stream_events():
+                WorkflowMonitor.log_stage("Event Processing", {
+                    "event_type": type(event).__name__
+                })
                 
-                # Send response back to workflow
-                handler.ctx.send_event(HumanResponseEvent(response=user_input))
+                if isinstance(event, InputRequiredEvent):
+                    user_input = input(event.prefix + "\n")
+                    if user_input.lower() in ['exit', 'quit']:
+                        WorkflowMonitor.log_stage("Session End", {"reason": "user_exit"})
+                        return
+                    
+                    handler.ctx.send_event(HumanResponseEvent(response=user_input))
+                
+            result = await handler
+            handler = workflow.run(ctx=handler.ctx)
             
-            elif isinstance(event, CVResponse):
-                print("Processing CV analysis...")
-            
-            elif isinstance(event, ConversationState):
-                print("Generating insights...")
-        
-        # Get final result and continue conversation
-        result = await handler
-        handler = workflow.run(ctx=handler.ctx)  # Maintain context for next iteration
+    except Exception as e:
+        WorkflowMonitor.log_stage("Error", {"error": str(e)})
+        raise

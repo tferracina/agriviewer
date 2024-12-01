@@ -4,7 +4,7 @@ import json
 import streamlit as st # type: ignore
 from llama_index.core.workflow import InputRequiredEvent # type: ignore
 
-from llm_engine import LLMEngine
+from llm_engine import APILLMEngine
 from cv_analyzer import CVAnalyzer
 from results_parser import ResultsParser
 from prompt_handler import PromptHandler
@@ -12,7 +12,7 @@ from prompt_handler import PromptHandler
 class StreamlitUI:
     def __init__(self):
         # Initialize components
-        self.llm_engine = LLMEngine()
+        self.llm_engine = APILLMEngine()
         self.cv_analyzer = CVAnalyzer()
         self.results_parser = ResultsParser()
         self.prompt_handler = PromptHandler(llm=self.llm_engine)

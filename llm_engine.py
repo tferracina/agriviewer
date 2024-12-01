@@ -3,9 +3,27 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 import torch
 from dataclasses import dataclass
 import json
+import httpx
+import logging
 
-from llme_instructions import analysis_types, llm_engine_instructions, base_system_prompt
+from llme_instructions import llm_engine_instructions, base_system_prompt
 from config import Config
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class WorkflowMonitor:
+    """Monitor and log workflow stages"""
+    
+    @staticmethod
+    def log_stage(stage_name: str, details: Optional[Dict] = None):
+        """Log workflow stage with optional details"""
+        message = f"[WORKFLOW STAGE] {stage_name}"
+        if details:
+            message += f": {details}"
+        logger.info(message)
+        print(message)  # For immediate console feedback
 
 
 @dataclass
@@ -16,92 +34,69 @@ class LLMResponse:
     additional_request: Optional[Dict] = None
     suggested_questions: List[str] = None
 
-class LLMEngine:
+class APILLMEngine:
     """Logic for the LLM engine"""
     def __init__(self):
-        # Initialize device
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        
-        # Initialize Zephyr model and tokenizer
-        self.model_name = "HuggingFaceH4/zephyr-7b-alpha"
-        
-        print(f"Loading model {self.model_name} on {self.device}...")
-        
-        # Initialize tokenizer with padding token
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            self.model_name,
-            padding_side="left",
-            truncation_side="left",
-        )
-        self.tokenizer.pad_token = self.tokenizer.eos_token
-        
-        # Load model with optimizations
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_name,
-            torch_dtype=torch.bfloat16,
-            device_map="auto",
-            load_in_8bit=True if self.device == "cuda" else False
-        )
-        
-        # Create text generation pipeline
-        self.pipeline = pipeline(
-            "text-generation",
-            model=self.model,
-            tokenizer=self.tokenizer,
-            device_map="auto"
-        )
-        
-        # System prompts for different analysis types
-        self.ANALYSIS_PROMPTS = analysis_types()
+        self.api_url = Config.HF_API_URL
+        self.headers = {"Authorization": f"Bearer {Config.HF_API_KEY}"}
 
-    async def analyze_results(self, results: 'pd.DataFrame', context: Dict) -> LLMResponse:
-        """Analyze CV results and generate insights"""
-        
-        # Prepare the analysis prompt
-        system_prompt = self._get_system_prompt(context)
-        
-        # Convert DataFrame to formatted string
-        data_str = self._format_data_for_prompt(results)
+    async def _make_api_request(self, payload: Dict) -> str:
+        """Make API request to Hugging Face"""
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                self.api_url,
+                json=payload,
+                headers=self.headers,
+                timeout=30.0
+            )
+            response.raise_for_status()
+            return response.json()[0]["generated_text"]
 
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": self._format_analysis_prompt(data_str, context)}
-        ]
-
-        # Generate response
-        response = await self._generate_response(messages)
+    async def analyze_results(self, results: 'pd.DataFrame', context: Dict) -> 'LLMResponse':
+        """Analyze results using the API"""
+        WorkflowMonitor.log_stage("LLM Analysis", {"context": context})
         
-        # Parse response and check if more data is needed
-        needs_more, additional_request = self._check_data_requirements(response)
+        # Format the prompt
+        prompt = self._format_analysis_prompt(results, context)
         
-        # Generate follow-up questions
-        follow_up = self._generate_follow_up_questions(response, context)
-
+        # Make API request
+        response = await self._make_api_request({
+            "inputs": prompt,
+            "parameters": {
+                "max_new_tokens": 512,
+                "temperature": Config.TEMPERATURE,
+                "top_p": 0.9
+            }
+        })
+        
         return LLMResponse(
             content=response,
-            needs_more_data=needs_more,
-            additional_request=additional_request,
-            suggested_questions=follow_up
+            needs_more_data=False  # Implement logic to detect if more data needed
         )
 
     def _get_system_prompt(self, context: Dict) -> str:
         """Generate appropriate system prompt based on analysis context"""
         base_prompt = base_system_prompt()
-        
-        # Add specific analysis instructions based on metrics
-        if hasattr(context, 'metrics'):
-            analysis_instructions = [
-                self.ANALYSIS_PROMPTS[metric]
-                for metric in context.metrics
-                if metric in self.ANALYSIS_PROMPTS
-            ]
-            base_prompt += " ".join(analysis_instructions)
 
         return base_prompt
 
-    async def chat_complete(self, messages: List[Dict[str, str]]) -> LLMResponse:
-        """Handle general chat completion requests"""
-        response = await self._generate_response(messages)
+    async def chat_complete(self, messages: List[Dict[str, str]]) -> 'LLMResponse':
+        """Handle chat completion using the API"""
+        WorkflowMonitor.log_stage("Chat Completion", {"message_count": len(messages)})
+        
+        # Format messages for API
+        formatted_prompt = self._format_chat_prompt(messages)
+        
+        # Make API request
+        response = await self._make_api_request({
+            "inputs": formatted_prompt,
+            "parameters": {
+                "max_new_tokens": 512,
+                "temperature": Config.TEMPERATURE,
+                "top_p": 0.9
+            }
+        })
+        
         return LLMResponse(content=response)
 
     async def _generate_response(self, messages: List[Dict[str, str]]) -> str:
