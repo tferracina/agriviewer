@@ -51,10 +51,16 @@ class StreamlitUI:
                 
                 # Create expander for each step
                 with st.expander(f"{status_color} {step['step']}", expanded=True):
-                    if step.get("details"):
+                    if (details := step.get("details")):
+                        df = details.pop('df') if ('df' in details) else None
+                        image = details.pop('image') if ('image' in details) else None
                         # Format JSON details nicely
-                        st.code(json.dumps(step["details"], indent=2), language="json")
-
+                        st.code(json.dumps(details, indent=2), language="json")
+                        if df is not None:
+                            st.dataframe(df)
+                        if image is not None:
+                            st.image(image)
+                        
     def display_metrics_selector(self) -> List[str]:
         """Display metric selection widget"""
         available_metrics = Config.METRICS
@@ -114,12 +120,13 @@ class StreamlitUI:
                 parsed_results = self.results_parser.parse_cv_results(results)
                 result_summary = {
                     "shape": parsed_results.shape if hasattr(parsed_results, 'shape') else None,
-                    "columns": list(parsed_results.columns) if hasattr(parsed_results, 'columns') else None
+                    "columns": list(parsed_results.columns) if hasattr(parsed_results, 'columns') else None,
+                    "df": parsed_results
                 }
                 self.update_workflow_status("3. Processing CV Results", "complete", result_summary)
                 
-                # Step 4: Generate Insights
-                self.update_workflow_status("4. Generating Analysis", "pending")
+                #nn Step 4: Generate Insights
+                nself.update_workflow_status("4. Generating Analysis", "pending")
                 context = {
                     "location": request.location,
                     "date_range": request.date_range,
