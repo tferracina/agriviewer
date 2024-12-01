@@ -13,41 +13,40 @@ AI Interaction: LlamaIndex
 Computer Vision: Custom crop field segmentation model
 Language Model: LLAMA 8B Instruct
 
-Key Features
-Intelligent Data Parsing
+### Key Features
+- Intelligent Data Parsing
+- Converts plain text instructions into computational variables
+- Uses LLAMA 8B Instruct model for precise instruction parsing
 
-Converts plain text instructions into computational variables
-Uses LLAMA 8B Instruct model for precise instruction parsing
+#### Satellite Image Analysis
 
-Satellite Image Analysis
+- Segments crop fields from satellite time series data
+- Identifies and masks different crop types
+- Calculates agricultural metrics (e.g., moisture index)
 
-Segments crop fields from satellite time series data
-Identifies and masks different crop types
-Calculates agricultural metrics (e.g., moisture index)
+#### Retrieval-Augmented Generation (RAG)
 
-Retrieval-Augmented Generation (RAG)
+- Stores and references previous query information
+- Enables multi-year comparative analysis
 
-Stores and references previous query information
-Enables multi-year comparative analysis
+### Workflow
 
-Workflow
+- Input: User provides a natural language query
+- Parsing: LLAMA model transforms query into actionable variables
+- Image Processing: Computer vision model analyzes satellite imagery
+- Metric Calculation: Extracts relevant agricultural metrics
+- Insight Generation: LLM provides contextualized, actionable insights
 
-Input: User provides a natural language query
-Parsing: LLAMA model transforms query into actionable variables
-Image Processing: Computer vision model analyzes satellite imagery
-Metric Calculation: Extracts relevant agricultural metrics
-Insight Generation: LLM provides contextualized, actionable insights
-
-Example Use Case
+#### Example Use Case
 Query: "What's the agricultural outlook for wheat in Kentucky this season?"
+
 Response: "The average moisture NDMI of wheat fields at this time of year in Kentucky is [X], indicating a high yield compared to previous years where it was [Y]."
-Future Roadmap
-
-Enhanced segmentation models
-Expanded crop and region coverage
-More advanced predictive analytics
 
 
+### Future Roadmap
 
+ - Enhanced segmentation models
+ - Expanded crop and region coverage
+ - More advanced predictive analytics
+ - Time series data for historic analysis 
 
-Future time series of the satelite 
