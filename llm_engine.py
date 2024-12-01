@@ -43,30 +43,28 @@ class APILLMEngine:
     async def _make_api_request(self, messages: Union[List[Dict[str, str]], Dict]) -> str:
         """Make API request to Hugging Face"""
         try:
-            # Ensure messages is a list
+            # Format messages into a single string
             if isinstance(messages, dict):
                 messages = [messages]
-
-            # Format the conversation for Llama
-            formatted_messages = []
+                
+            # Convert messages to Mistral's expected format
+            prompt = ""
             for msg in messages:
-                if isinstance(msg, dict) and "role" in msg and "content" in msg:
-                    formatted_messages.append({
-                        "role": msg["role"],
-                        "content": msg["content"]
-                    })
+                if msg["role"] == "system":
+                    prompt += f"[INST] <>\n{msg['content']}\n<>\n\n"
+                elif msg["role"] == "user":
+                    prompt += f"{msg['content']} [/INST]"
+                elif msg["role"] == "assistant":
+                    prompt += f" {msg['content']} [INST]"
 
             payload = {
-                "inputs": formatted_messages,
+                "inputs": prompt,  # Send a single string instead of a sequence
                 "parameters": {
                     "max_new_tokens": 512,
                     "temperature": Config.TEMPERATURE,
                     "top_p": 0.9,
                     "do_sample": True,
                     "return_full_text": False
-                },
-                "options": {
-                    "wait_for_model": True
                 }
             }
 
@@ -104,7 +102,7 @@ class APILLMEngine:
         WorkflowMonitor.log_stage("LLM Analysis", {"context": str(context)})
         
         # Format the prompt for Llama
-        system_prompt = self._get_system_prompt(context)
+        system_prompt = self._get_system_prompt()
         analysis_prompt = self._format_analysis_prompt(results.to_string(), context)
         
         messages = [
