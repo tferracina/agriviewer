@@ -8,7 +8,7 @@ class Config:
     HF_API_KEY = os.getenv("HF_API_KEY")
     
     # Hugging Face model settings
-    HF_MODEL_NAME = "HuggingFaceH4/zephyr-7b-beta"
+    HF_MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
     HF_API_URL = f"https://api-inference.huggingface.co/models/{HF_MODEL_NAME}"
     
     # Additional configuration settings can go here

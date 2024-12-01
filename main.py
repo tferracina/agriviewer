@@ -109,7 +109,12 @@ class MonitoredWorkflow(Workflow):
         if isinstance(ev, CVResponse):
             insights = await self.llm.analyze_results(
                 results=ev.results,
-                context=current_request
+                context={
+                    "location": getattr(current_request, "location", ""),
+                    "date_range": getattr(current_request, "date_range", ""),
+                    "crop_type": getattr(current_request, "crop_type", ""),
+                    "metrics": getattr(current_request, "metrics", [])
+                }
             )
             
             WorkflowMonitor.log_stage("Insights Generated", {
@@ -120,9 +125,9 @@ class MonitoredWorkflow(Workflow):
                 return CVRequest(**insights.additional_request)
             
             return ConversationState(
-                current_topic=current_request.topic,
-                cv_history=[mem["type"] for mem in self.conversation_memory],
-                last_analysis=insights.dict(),
+                current_topic=getattr(current_request, "topic", ""),
+                cv_history=[],  # Initialize empty list instead of accessing memory
+                last_analysis=vars(insights),  # Convert to dict using vars()
                 follow_up_questions=insights.suggested_questions
             )
         

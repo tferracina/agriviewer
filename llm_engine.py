@@ -34,48 +34,42 @@ class LLMResponse:
 class APILLMEngine:
     """Logic for the LLM engine using Llama"""
     def __init__(self):
-        self.api_url = "https://api-inference.huggingface.co/models/meta-llama/Llama-2-8b-chat-hf"
+        self.api_url = Config.HF_API_URL
         self.headers = {
             "Authorization": f"Bearer {Config.HF_API_KEY}",
             "Content-Type": "application/json"
         }
 
-    async def _make_api_request(self, messages: List[Dict[str, str]]) -> str:
+    async def _make_api_request(self, messages: Union[List[Dict[str, str]], Dict]) -> str:
         """Make API request to Hugging Face"""
-        # Format the conversation for Llama
-        formatted_messages = []
-        for msg in messages:
-            if msg["role"] == "system":
-                formatted_messages.append({
-                    "role": "system",
-                    "content": msg["content"]
-                })
-            elif msg["role"] == "user":
-                formatted_messages.append({
-                    "role": "user",
-                    "content": msg["content"]
-                })
-            elif msg["role"] == "assistant":
-                formatted_messages.append({
-                    "role": "assistant",
-                    "content": msg["content"]
-                })
-
-        payload = {
-            "inputs": formatted_messages,
-            "parameters": {
-                "max_new_tokens": 512,
-                "temperature": Config.TEMPERATURE,
-                "top_p": 0.9,
-                "do_sample": True,
-                "return_full_text": False
-            },
-            "options": {
-                "wait_for_model": True
-            }
-        }
-
         try:
+            # Ensure messages is a list
+            if isinstance(messages, dict):
+                messages = [messages]
+
+            # Format the conversation for Llama
+            formatted_messages = []
+            for msg in messages:
+                if isinstance(msg, dict) and "role" in msg and "content" in msg:
+                    formatted_messages.append({
+                        "role": msg["role"],
+                        "content": msg["content"]
+                    })
+
+            payload = {
+                "inputs": formatted_messages,
+                "parameters": {
+                    "max_new_tokens": 512,
+                    "temperature": Config.TEMPERATURE,
+                    "top_p": 0.9,
+                    "do_sample": True,
+                    "return_full_text": False
+                },
+                "options": {
+                    "wait_for_model": True
+                }
+            }
+
             async with httpx.AsyncClient() as client:
                 response = await client.post(
                     self.api_url,
@@ -105,31 +99,20 @@ class APILLMEngine:
             logger.error(f"Error during API request: {str(e)}")
             return "I apologize, but I encountered an unexpected error. Please try again."
 
-
     async def analyze_results(self, results: 'pd.DataFrame', context: Dict) -> 'LLMResponse':
         """Analyze results using Llama"""
-        WorkflowMonitor.log_stage("LLM Analysis", {"context": context})
+        WorkflowMonitor.log_stage("LLM Analysis", {"context": str(context)})
         
         # Format the prompt for Llama
         system_prompt = self._get_system_prompt(context)
-        analysis_prompt = self._format_analysis_prompt(results, context)
+        analysis_prompt = self._format_analysis_prompt(results.to_string(), context)
         
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": analysis_prompt}
         ]
         
-        formatted_prompt = self._format_chat_prompt(messages)
-        
-        response = await self._make_api_request({
-            "inputs": formatted_prompt,
-            "parameters": {
-                "max_new_tokens": 512,
-                "temperature": Config.TEMPERATURE,
-                "top_p": 0.9,
-                "repetition_penalty": 1.1
-            }
-        })
+        response = await self._make_api_request(messages)
         
         cleaned_response = self._clean_response(response)
         
@@ -147,20 +130,20 @@ class APILLMEngine:
         """Handle chat completion using Llama"""
         WorkflowMonitor.log_stage("Chat Completion", {"message_count": len(messages)})
         
-        formatted_prompt = self._format_chat_prompt(messages)
-        
-        response = await self._make_api_request({
-            "inputs": formatted_prompt,
-            "parameters": {
-                "max_new_tokens": 512,
-                "temperature": Config.TEMPERATURE,
-                "top_p": 0.9,
-                "repetition_penalty": 1.1
-            }
-        })
+        response = await self._make_api_request(messages)
         
         cleaned_response = self._clean_response(response)
         return LLMResponse(content=cleaned_response)
+
+    def _clean_response(self, response: str) -> str:
+        """Clean the Llama response"""
+        # Remove any system messages
+        response = response.split("[INST]")[0]
+        response = response.split("<<SYS>>")[-1].split("<</SYS>>")[-1]
+        
+        # Remove special tokens and clean whitespace
+        response = response.replace("</s>", "").replace("<s>", "").strip()
+        return response
 
     def _format_chat_prompt(self, messages: List[Dict[str, str]]) -> str:
         """Format messages into Llama chat format"""
@@ -184,18 +167,8 @@ class APILLMEngine:
         
         return formatted_prompt
 
-    def _clean_response(self, response: str) -> str:
-        """Clean the Llama response"""
-        # Remove any system messages
-        response = response.split("[INST]")[0]
-        response = response.split("<<SYS>>")[-1].split("<</SYS>>")[-1]
-        
-        # Remove special tokens and clean whitespace
-        response = response.replace("</s>", "").replace("<s>", "").strip()
-        return response
-
     # Other methods remain the same as they don't need Llama-specific changes
-    def _get_system_prompt(self, context: Dict) -> str:
+    def _get_system_prompt(self) -> str:
         return base_system_prompt()
 
     def _format_analysis_prompt(self, data_str: str, context: Dict) -> str:
