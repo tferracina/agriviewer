@@ -163,8 +163,8 @@ def main():
         layout="wide"
     )
     
-    # Create two columns: main content and sidebar
-    main_col, sidebar_col = st.columns([2, 1])
+    # Create two columns: main content and workflow status
+    main_col, workflow_col = st.columns([2, 1])
     
     with main_col:
         st.title("🌾 AgriViewer Chat")
@@ -190,9 +190,19 @@ def main():
             asyncio.run(ui.process_message(prompt, selected_metrics))
             st.rerun()
     
-    with sidebar_col:
+    with workflow_col:
         st.title("Workflow Steps")
-        ui.display_workflow_sidebar()
+        # Remove the sidebar display method and only use the column
+        for step in st.session_state.workflow_steps:
+            status_color = {
+                "pending": "🔵",
+                "complete": "✅",
+                "error": "❌"
+            }.get(step["status"], "⚪")
+            
+            with st.expander(f"{status_color} {step['step']}", expanded=True):
+                if step.get("details"):
+                    st.code(json.dumps(step["details"], indent=2), language="json")
 
 if __name__ == "__main__":
     main()
