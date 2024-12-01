@@ -5,7 +5,7 @@ import streamlit as st
 from llama_index.core.workflow import InputRequiredEvent
 
 from llm_engine import APILLMEngine, WorkflowMonitor
-from cv_analyzer import CVAnalyzer
+from cv_analyzer import HardcodedCVAnalyzer
 from results_parser import ResultsParser
 from prompt_handler import PromptHandler
 from config import Config
@@ -14,7 +14,7 @@ class StreamlitUI:
     def __init__(self):
         # Initialize components
         self.llm_engine = APILLMEngine()
-        self.cv_analyzer = CVAnalyzer()
+        self.cv_analyzer = HardcodedCVAnalyzer()
         self.results_parser = ResultsParser()
         self.prompt_handler = PromptHandler(llm=self.llm_engine)
         

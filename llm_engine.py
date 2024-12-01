@@ -103,7 +103,14 @@ class APILLMEngine:
         
         # Format the prompt for Llama
         system_prompt = self._get_system_prompt()
-        analysis_prompt = self._format_analysis_prompt(results.to_string(), context)
+        analysis_prompt = f"""
+        Raw CV Analysis Results:
+        {results.to_string()}
+        
+        Based on the above results, provide a very brief analysis focusing on:
+        1. Most important observation
+        2. Key recommendation (if needed)
+        """
         
         messages = [
             {"role": "system", "content": system_prompt},
@@ -111,14 +118,21 @@ class APILLMEngine:
         ]
         
         response = await self._make_api_request(messages)
-        
         cleaned_response = self._clean_response(response)
+        
+        final_response = f"""
+Raw CV Results:
+{results.to_string()}
+
+Brief Analysis:
+{cleaned_response}
+"""
         
         # Check if more data is needed
         needs_more, additional_request = self._check_data_requirements(cleaned_response)
         
         return LLMResponse(
-            content=cleaned_response,
+            content=final_response,
             needs_more_data=needs_more,
             additional_request=additional_request,
             suggested_questions=self._generate_follow_up_questions(context) if not needs_more else None

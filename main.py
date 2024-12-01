@@ -12,7 +12,7 @@ import pandas as pd
 from prompt_handler import PromptHandler
 
 from llm_engine import WorkflowMonitor, APILLMEngine
-from cv_analyzer import CVAnalyzer
+from cv_analyzer import HardcodedCVAnalyzer
 from results_parser import ResultsParser
 
 # Event definitions
@@ -137,7 +137,7 @@ async def run_monitored_session():
     WorkflowMonitor.log_stage("Session Start")
     
     # Initialize components with API-based LLM
-    cv_analyzer = CVAnalyzer()
+    cv_analyzer = HardcodedCVAnalyzer()
     llm_engine = APILLMEngine()
     results_parser = ResultsParser()
     prompt_handler = PromptHandler(llm=llm_engine)
