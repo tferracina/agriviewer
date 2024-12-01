@@ -11,6 +11,18 @@ from config import Config
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+class WorkflowMonitor:
+    """Monitor and log workflow stages"""
+    
+    @staticmethod
+    def log_stage(stage_name: str, details: Optional[Dict] = None):
+        """Log workflow stage with optional details"""
+        message = f"[WORKFLOW STAGE] {stage_name}"
+        if details:
+            message += f": {details}"
+        logger.info(message)
+        print(message)
+
 @dataclass
 class LLMResponse:
     """Response from the LLM engine"""
