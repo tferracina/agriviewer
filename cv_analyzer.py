@@ -6,8 +6,8 @@ class HardcodedCVAnalyzer:
     
     def __init__(self):
         # Load the visualization data
-        self.visualization_data = json.load(open("assets/visualization_data.json", encoding="utf-8"))
-        self.image_output = "assets/output_figure.png"
+        self.visualization_data = json.load(open("asset/metrics.json", encoding="utf-8"))
+        self.image_output = "asset/histogram.jpeg"
 
     def analyze(self):
         """Generate visualization and return results"""

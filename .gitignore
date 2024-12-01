@@ -1,4 +1,7 @@
 .venv/
 .env
+assets/
 
 __pycache__/
+
+.DS_Store
