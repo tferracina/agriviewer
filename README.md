@@ -2,52 +2,55 @@
 
 ## The intersection of computer vision and LLM's. A chatbot designed to convey information on fields using semantic segmentation on satelite imagery. 
 
-Agriview is an innovative agricultural intelligence platform that leverages satellite imagery, computer vision, and large language models to provide actionable insights for traders and farmers.
-Problem Statement
-Agricultural decision-making requires complex data analysis from satellite imagery. Scrippy simplifies this process by translating complex satellite data into understandable, actionable insights.
-Technologies
+Agriview is an agricultural intelligence platform that leverages satellite imagery, computer vision, and large language models to provide actionable insights for farmers, traders or land surveyors.
 
-Satellite Data Acquisition: Copernicus Browser (Sentinel-2)
-Image Processing: Rasterio
-AI Interaction: LlamaIndex
-Computer Vision: Custom crop field segmentation model
-Language Model: LLAMA 8B Instruct
+### Problem Statement
 
-Key Features
-Intelligent Data Parsing
+Agricultural decision-making requires complex data analysis from satellite imagery. Agriview simplifies this process by translating complex satellite data into understandable, actionable insights.
 
-Converts plain text instructions into computational variables
-Uses LLAMA 8B Instruct model for precise instruction parsing
 
-Satellite Image Analysis
+### Technologies
 
-Segments crop fields from satellite time series data
-Identifies and masks different crop types
-Calculates agricultural metrics (e.g., moisture index)
+ - Satellite Data Acquisition: Copernicus Browser (Sentinel-2)
+ - Image Processing: Rasterio
+ - AI Interaction: LlamaIndex
+ - Computer Vision: Custom crop field segmentation model
+ - Language Model: LLAMA 8B Instruct
 
-Retrieval-Augmented Generation (RAG)
+### Key Features
+- Intelligent Data Parsing
+- Converts plain text instructions into computational variables
+- Uses LLAMA 8B Instruct model for precise instruction parsing
 
-Stores and references previous query information
-Enables multi-year comparative analysis
+#### Satellite Image Analysis
 
-Workflow
+- Segments crop fields from satellite time series data
+- Identifies and masks different crop types
+- Calculates agricultural metrics (e.g., moisture index)
 
-Input: User provides a natural language query
-Parsing: LLAMA model transforms query into actionable variables
-Image Processing: Computer vision model analyzes satellite imagery
-Metric Calculation: Extracts relevant agricultural metrics
-Insight Generation: LLM provides contextualized, actionable insights
+#### Retrieval-Augmented Generation (RAG)
 
-Example Use Case
+- Stores and references previous query information
+- Enables multi-year comparative analysis
+
+### Workflow
+
+- Input: User provides a natural language query
+- Parsing: LLAMA model transforms query into actionable variables
+- Image Processing: Computer vision model analyzes satellite imagery
+- Metric Calculation: Extracts relevant agricultural metrics
+- Insight Generation: LLM provides contextualized, actionable insights
+
+#### Example Use Case
 Query: "What's the agricultural outlook for wheat in Kentucky this season?"
+
 Response: "The average moisture NDMI of wheat fields at this time of year in Kentucky is [X], indicating a high yield compared to previous years where it was [Y]."
-Future Roadmap
-
-Enhanced segmentation models
-Expanded crop and region coverage
-More advanced predictive analytics
 
 
+### Future Roadmap
 
+ - Enhanced segmentation models
+ - Expanded crop and region coverage
+ - More advanced predictive analytics
+ - Time series data for historic analysis 
 
-Future time series of the satelite 
