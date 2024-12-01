@@ -1,6 +1,4 @@
 from typing import List, Dict, Optional, Union
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
-import torch
 from dataclasses import dataclass
 import json
 import httpx
@@ -13,19 +11,6 @@ from config import Config
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class WorkflowMonitor:
-    """Monitor and log workflow stages"""
-    
-    @staticmethod
-    def log_stage(stage_name: str, details: Optional[Dict] = None):
-        """Log workflow stage with optional details"""
-        message = f"[WORKFLOW STAGE] {stage_name}"
-        if details:
-            message += f": {details}"
-        logger.info(message)
-        print(message)  # For immediate console feedback
-
-
 @dataclass
 class LLMResponse:
     """Response from the LLM engine"""
@@ -35,9 +20,10 @@ class LLMResponse:
     suggested_questions: List[str] = None
 
 class APILLMEngine:
-    """Logic for the LLM engine"""
+    """Logic for the LLM engine using Llama"""
     def __init__(self):
-        self.api_url = Config.HF_API_URL
+        # Update model name for Llama
+        self.api_url = "https://api-inference.huggingface.co/models/meta-llama/Llama-2-8b-chat-hf"
         self.headers = {"Authorization": f"Bearer {Config.HF_API_KEY}"}
 
     async def _make_api_request(self, payload: Dict) -> str:
@@ -53,102 +39,98 @@ class APILLMEngine:
             return response.json()[0]["generated_text"]
 
     async def analyze_results(self, results: 'pd.DataFrame', context: Dict) -> 'LLMResponse':
-        """Analyze results using the API"""
+        """Analyze results using Llama"""
         WorkflowMonitor.log_stage("LLM Analysis", {"context": context})
         
-        # Format the prompt
-        prompt = self._format_analysis_prompt(results, context)
+        # Format the prompt for Llama
+        system_prompt = self._get_system_prompt(context)
+        analysis_prompt = self._format_analysis_prompt(results, context)
         
-        # Make API request
-        response = await self._make_api_request({
-            "inputs": prompt,
-            "parameters": {
-                "max_new_tokens": 512,
-                "temperature": Config.TEMPERATURE,
-                "top_p": 0.9
-            }
-        })
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": analysis_prompt}
+        ]
         
-        return LLMResponse(
-            content=response,
-            needs_more_data=False  # Implement logic to detect if more data needed
-        )
-
-    def _get_system_prompt(self, context: Dict) -> str:
-        """Generate appropriate system prompt based on analysis context"""
-        base_prompt = base_system_prompt()
-
-        return base_prompt
-
-    async def chat_complete(self, messages: List[Dict[str, str]]) -> 'LLMResponse':
-        """Handle chat completion using the API"""
-        WorkflowMonitor.log_stage("Chat Completion", {"message_count": len(messages)})
-        
-        # Format messages for API
         formatted_prompt = self._format_chat_prompt(messages)
         
-        # Make API request
         response = await self._make_api_request({
             "inputs": formatted_prompt,
             "parameters": {
                 "max_new_tokens": 512,
                 "temperature": Config.TEMPERATURE,
-                "top_p": 0.9
+                "top_p": 0.9,
+                "repetition_penalty": 1.1
             }
         })
         
-        return LLMResponse(content=response)
+        cleaned_response = self._clean_response(response)
+        
+        # Check if more data is needed
+        needs_more, additional_request = self._check_data_requirements(cleaned_response)
+        
+        return LLMResponse(
+            content=cleaned_response,
+            needs_more_data=needs_more,
+            additional_request=additional_request,
+            suggested_questions=self._generate_follow_up_questions(context) if not needs_more else None
+        )
 
-    async def _generate_response(self, messages: List[Dict[str, str]]) -> str:
-        """Generate response using the Zephyr model with proper chat formatting"""
-        # Format messages into Zephyr's expected chat format
+    async def chat_complete(self, messages: List[Dict[str, str]]) -> 'LLMResponse':
+        """Handle chat completion using Llama"""
+        WorkflowMonitor.log_stage("Chat Completion", {"message_count": len(messages)})
+        
         formatted_prompt = self._format_chat_prompt(messages)
         
-        # Generate response
-        outputs = self.pipeline(
-            formatted_prompt,
-            max_new_tokens=512,
-            do_sample=True,
-            temperature=Config.TEMPERATURE,
-            top_p=0.9,
-            pad_token_id=self.tokenizer.eos_token_id,
-            eos_token_id=self.tokenizer.eos_token_id,
-            return_full_text=False
-        )
+        response = await self._make_api_request({
+            "inputs": formatted_prompt,
+            "parameters": {
+                "max_new_tokens": 512,
+                "temperature": Config.TEMPERATURE,
+                "top_p": 0.9,
+                "repetition_penalty": 1.1
+            }
+        })
         
-        # Extract and clean the generated response
-        response = outputs[0]['generated_text']
-        return self._clean_response(response)
+        cleaned_response = self._clean_response(response)
+        return LLMResponse(content=cleaned_response)
 
     def _format_chat_prompt(self, messages: List[Dict[str, str]]) -> str:
-        """Format messages into Zephyr's chat format"""
+        """Format messages into Llama chat format"""
         formatted_prompt = ""
         for msg in messages:
             role = msg["role"]
             content = msg["content"]
+            
             if role == "system":
-                formatted_prompt += f"<|system|>{content}</s>"
+                formatted_prompt += f"<s>[INST] <<SYS>>\n{content}\n<</SYS>>\n\n"
             elif role == "user":
-                formatted_prompt += f"<|user|>{content}</s>"
+                if formatted_prompt:
+                    formatted_prompt += f"{content} [/INST] "
+                else:
+                    formatted_prompt += f"[INST] {content} [/INST] "
             elif role == "assistant":
-                formatted_prompt += f"<|assistant|>{content}</s>"
+                formatted_prompt += f"{content} </s><s>[INST] "
         
-        formatted_prompt += "<|assistant|>"
+        if not formatted_prompt.endswith("[INST] "):
+            formatted_prompt += "[/INST]"
+        
         return formatted_prompt
 
     def _clean_response(self, response: str) -> str:
-        """Clean the generated response"""
-        # Remove any system or user messages that might have been generated
-        response = response.split("<|system|>")[0]
-        response = response.split("<|user|>")[0]
-        response = response.split("<|assistant|>")[-1]
+        """Clean the Llama response"""
+        # Remove any system messages
+        response = response.split("[INST]")[0]
+        response = response.split("<<SYS>>")[-1].split("<</SYS>>")[-1]
         
-        # Remove any remaining special tokens and clean up whitespace
-        response = response.replace("</s>", "").strip()
+        # Remove special tokens and clean whitespace
+        response = response.replace("</s>", "").replace("<s>", "").strip()
         return response
 
+    # Other methods remain the same as they don't need Llama-specific changes
+    def _get_system_prompt(self, context: Dict) -> str:
+        return base_system_prompt()
+
     def _format_analysis_prompt(self, data_str: str, context: Dict) -> str:
-        """Format the analysis prompt with data and context"""
         return llm_engine_instructions(
             data_str,
             context["location"],
@@ -156,13 +138,7 @@ class APILLMEngine:
             context.get("crop_type", "unspecified")
         )
 
-    def _format_data_for_prompt(self, df: 'pd.DataFrame') -> str:
-        """Format DataFrame into a string suitable for the prompt"""
-        return df.to_string(index=False)
-
     def _check_data_requirements(self, response: str) -> tuple[bool, Optional[Dict]]:
-        """Check if the response indicates need for additional data"""
-        # Look for indicators in the response that suggest more data is needed
         needs_more_indicators = [
             "need more data",
             "additional information required",
@@ -173,25 +149,17 @@ class APILLMEngine:
         needs_more = any(indicator in response.lower() for indicator in needs_more_indicators)
         
         additional_request = None
-        if needs_more:
-            # Parse the response to determine what additional data is needed
-            # This is a simplified example - you might want to use more sophisticated parsing
-            if "historical" in response.lower():
-                additional_request = {
-                    "extend_date_range": True,
-                    "metrics": ["NDVI", "soil_moisture"]  # Example metrics
-                }
+        if needs_more and "historical" in response.lower():
+            additional_request = {
+                "extend_date_range": True,
+                "metrics": ["NDVI", "soil_moisture"]
+            }
 
         return needs_more, additional_request
 
     def _generate_follow_up_questions(self, context: Dict) -> List[str]:
-        """Generate relevant follow-up questions based on the analysis"""
-        # Could be enhanced with more sophisticated logic
-        standard_questions = [
-            f"Would you like to see a detailed analysis of specific areas in {context.location}?",
+        return [
+            f"Would you like to see a detailed analysis of specific areas in {context['location']}?",
             "Should we analyze any other metrics for this field?",
-            "Would you like to compare this with historical data?",
-            "Would you like recommendations for improving crop health in problematic areas?"
+            "Would you like to compare this with historical data?"
         ]
-        
-        return standard_questions[:3]  # Return top 3 most relevant questions
