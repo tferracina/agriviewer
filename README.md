@@ -12,6 +12,7 @@ Agricultural decision-making requires complex data analysis from satellite image
 ### Technologies
 
  - Satellite Data Acquisition: Copernicus Browser (Sentinel-2)
+ - Segmentation model: Panoptic Segmentation of Satellite Image Time Series with Convolutional Temporal Attention Networks (https://github.com/VSainteuf/utae-paps?tab=readme-ov-file)
  - Image Processing: Rasterio
  - AI Interaction: LlamaIndex
  - Computer Vision: Custom crop field segmentation model
