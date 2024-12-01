@@ -2,16 +2,20 @@
 
 ## The intersection of computer vision and LLM's. A chatbot designed to convey information on fields using semantic segmentation on satelite imagery. 
 
-Agriview is an innovative agricultural intelligence platform that leverages satellite imagery, computer vision, and large language models to provide actionable insights for traders and farmers.
-Problem Statement
-Agricultural decision-making requires complex data analysis from satellite imagery. Scrippy simplifies this process by translating complex satellite data into understandable, actionable insights.
-Technologies
+Agriview is an agricultural intelligence platform that leverages satellite imagery, computer vision, and large language models to provide actionable insights for farmers, traders or land surveyors.
 
-Satellite Data Acquisition: Copernicus Browser (Sentinel-2)
-Image Processing: Rasterio
-AI Interaction: LlamaIndex
-Computer Vision: Custom crop field segmentation model
-Language Model: LLAMA 8B Instruct
+### Problem Statement
+
+Agricultural decision-making requires complex data analysis from satellite imagery. Agriview simplifies this process by translating complex satellite data into understandable, actionable insights.
+
+
+### Technologies
+
+ - Satellite Data Acquisition: Copernicus Browser (Sentinel-2)
+ - Image Processing: Rasterio
+ - AI Interaction: LlamaIndex
+ - Computer Vision: Custom crop field segmentation model
+ - Language Model: LLAMA 8B Instruct
 
 ### Key Features
 - Intelligent Data Parsing
