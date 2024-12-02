@@ -3,6 +3,8 @@ from dataclasses import dataclass
 import json
 import httpx
 import logging
+import pandas as pd
+
 
 from llme_instructions import llm_engine_instructions, base_system_prompt
 from config import Config
@@ -30,6 +32,7 @@ class LLMResponse:
     needs_more_data: bool = False
     additional_request: Optional[Dict] = None
     suggested_questions: List[str] = None
+    visualization_data: Optional[pd.DataFrame] = None
 
 class APILLMEngine:
     """Logic for the LLM engine using Llama"""

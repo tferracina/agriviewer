@@ -13,9 +13,6 @@ from prompt_handler import PromptHandler
 from config import Config
 from visualizer import AgriVisualizer
 
-st.set_option('deprecation.showfileUploaderEncoding', False)
-st.set_option('deprecation.showImageFormat', False)
-
 class StreamlitUI:
     def __init__(self):
         # Initialize components
