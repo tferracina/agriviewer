@@ -5,3 +5,8 @@ assets/
 __pycache__/
 
 .DS_Store
+
+# Jupiter Notebooks
+*.ipynb
+satelliteload.ipynb
+SegandAnalysis.ipynb
